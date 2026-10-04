@@ -1,0 +1,42 @@
+[Unit]
+Description=LiteLLM OAuth2 Proxy Container
+Requires=litellm-caddy.service litellm-oauth2-redis.service
+After=litellm-caddy.service litellm-oauth2-redis.service
+
+[Container]
+ContainerName=litellm-oauth2-proxy
+
+Pod=litellm.pod
+StartWithPod=true
+
+# General Settings
+EnvironmentFile=.env
+
+# Specific Settings
+EnvironmentFile=.env.oauth2-proxy
+
+# Other Environment Settings
+# Environment=XXX=xxx
+
+# Image
+Image=docker.MYDOMAIN.TLD/quay.io/oauth2-proxy/oauth2-proxy:v7.15.3-alpine
+Pull=missing
+
+# User
+User=root
+
+# Network
+Network=container:litellm-caddy
+
+# Command
+Exec=--alpha-config /alpha-config.yml
+
+# Volumes
+Volume=/home/podman/containers/config/litellm/oauth2-proxy/alpha-config.yml:/alpha-config.yml:ro,Z
+
+# Debug
+# Entrypoint=/bin/sh
+# PodmanArgs=-it
+
+[Service]
+Restart=always

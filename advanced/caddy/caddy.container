@@ -1,0 +1,25 @@
+[Unit]
+Description=LiteLLM Caddy Container
+
+[Service]
+Restart=always
+
+[Container]
+ContainerName=litellm-caddy
+
+Pod=litellm.pod
+StartWithPod=true
+
+Environment=CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
+EnvironmentFile=.env.caddy
+
+Image=docker.MYDOMAIN.TLD/docker.io/library/caddy:latest
+Pull=always
+
+NoNewPrivileges=true
+
+Volume=./Caddyfile:/etc/caddy/Caddyfile:ro,z
+Volume=/home/podman/containers/data/litellm/caddy:/data/caddy:z
+Volume=/home/podman/containers/log/litellm/caddy:/var/log:z
+Volume=/home/podman/containers/config/litellm/caddy:/config/caddy:z
+Volume=/home/podman/containers/certificates/letsencrypt:/certificates:ro,z

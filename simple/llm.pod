@@ -1,0 +1,17 @@
+[Pod]
+PodName=llm
+
+# Open Web UI HTTPS (proxied via Caddy)
+PublishPort=80:80/tcp
+PublishPort=443:443/tcp
+PublishPort=443:443/udp
+
+# llama.cpp Server API (proxied via Caddy + oauth2-proxy)
+PublishPort=8443:8443/tcp
+PublishPort=8443:8443/udp
+
+# Network Mode
+Network=pasta
+
+[Install]
+WantedBy=default.target

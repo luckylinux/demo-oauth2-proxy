@@ -1,0 +1,59 @@
+[Unit]
+Description=LiteLLM Redis
+Requires=litellm-caddy.service
+After=litellm-caddy.service
+
+[Container]
+ContainerName=litellm-oauth2-redis
+
+Pod=litellm.pod
+StartWithPod=true
+
+# General Settings
+EnvironmentFile=.env
+
+# Specific Settings
+EnvironmentFile=.env.oauth2-redis
+
+# Other Environment Settings
+# Password: generate e.g. with pwgen -n -c -s 64 1
+Environment=VALKEY_EXTRA_FLAGS="--bind 0.0.0.0  --port 6380 --requirepass XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+Environment=VALKEYCLI_AUTH=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# Command
+# Exec=--save 60 1 --loglevel warning
+
+# Health Monitor
+# HealthCmd=valkey-cli ping | grep PONG
+# HealthCmd=valkey-cli -h 127.0.0.1 -a "$VALKEYCLI_AUTH" ping | grep PONG
+HealthCmd=valkey-cli -p 6380 ping | grep PONG
+HealthInterval=15s
+HealthRetries=5
+HealthStartPeriod=5s
+# HealthTimeout=30s
+
+# Wait until Container is healthy before starting other Containers
+# Notify=healthy
+
+# Start other Containers anyways
+Notify=none
+
+# Image
+Image=docker.MYDOMAIN.TLD/docker.io/valkey/valkey:alpine
+Pull=missing
+
+# User
+User=root
+
+# Network
+Network=container:litellm-caddy
+
+# Volumes
+Volume=/home/podman/containers/data/litellm/oauth2-redis:/data:rw,z
+
+[Service]
+Restart=always
+
+# If using within a Pod disable this
+# [Install]
+# WantedBy=default.target

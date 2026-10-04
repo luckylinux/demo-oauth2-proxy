@@ -1,0 +1,220 @@
+# Example and Guide
+# https://caddyserver.com/docs/caddyfile/options
+
+# General Options
+{
+    # Debug Mode
+    # debug
+
+    # Explicitly forces Caddy to show cookies/auth tokens in Logs
+    # !! This is only for Debugging Issues !!
+    # servers {
+    #     log_credentials
+    # }
+
+    # Disable Admin API
+    admin off
+
+    # TLS Options
+    # (Optional) Disable Certificates Management (only if SSL/TLS Certificates are managed by certbot or other external Tools)
+    auto_https disable_certs
+
+    # (Optional) Default SNI
+    # default_sni {$APPLICATION_HOSTNAME}
+}
+
+# localhost {
+# 	reverse_proxy /api/* localhost:9001
+# }
+
+(reset-oidc-headers) {
+    header_up X-Auth-Request-User ""
+    header_up X-Auth-Request-Username ""
+    header_up X-Auth-Request-Preferred-Username ""
+    header_up X-Auth-Request-Email ""
+    header_up X-Auth-Request-Email-Verified ""
+    header_up X-Auth-Request-Groups ""
+    header_up X-Auth-Request-Roles ""
+    header_up X-Auth-Request-Entitlements ""
+    header_up X-Auth-Request-Friendly-Name ""
+    header_up X-LiteLLM-Auth-Token ""
+
+    # Explicitly clear standard authorization headers if your backend shouldn't see them
+    header_up Authorization ""
+}
+
+(oauth2-proxy-authenticate) {
+    forward_auth litellm-oauth2-proxy:4180 {
+        # uri /oauth2/auth # Checking if order
+        uri /oauth2
+
+        # oauth2-proxy requires the X-Real-IP and X-Forwarded-{Proto,Host,Uri} headers.
+        # The forward_auth directive automatically sets the X-Forwarded-{For,Proto,Host,Method,Uri} headers.
+        header_up X-Real-IP {remote_host}
+
+        # If needed, you can copy headers from the oauth2-proxy response to the request sent to the upstream.
+        # Make sure to configure the --set-xauthrequest flag to enable this feature.
+        copy_headers X-Auth-Request-User X-Auth-Request-Username X-Auth-Request-Email X-Auth-Request-Email-Verified X-Auth-Request-Groups X-Auth-Request-Preferred-Username X-Auth-Request-Username X-Auth-Request-Roles X-Auth-Request-Entitlements X-Auth-Request-Friendly-Name Remote-User Remote-Username Remote-Groups Remote-Friendly-Name Remote-Email Remote-Groups Remote-Roles Remote-Entitlements Access-Token
+
+        # If oauth2-proxy returns a 401 status, redirect the client to the sign-in page.
+        @error status 401
+            handle_response @error {
+                redir * /oauth2/sign_in?rd={scheme}://{host}{uri}
+            }
+    }
+}
+
+# LiteLLM UI and Standard API
+{$APPLICATION_HOSTNAME} {
+    tls /certificates/{$APPLICATION_CERTIFICATE_DOMAIN}/{$APPLICATION_CERTIFICATE_CERT_FILE:fullchain.pem} /certificates/{$APPLICATION_CERTIFICATE_DOMAIN}/{$APPLICATION_CERTIFICATE_KEY_FILE:privkey.pem}
+
+    log {
+        output file /var/log/{$APPLICATION_HOSTNAME}/litellm/access.json {
+                roll_size 100MiB
+                roll_keep 5000
+                roll_keep_for 720h
+                roll_uncompressed
+        }
+
+        format json
+    }
+
+    # Match 'admin' if it is:
+    # 1. The only value: ^admin$
+    # 2. At the start before a comma: ^admin,
+    # 3. In the middle between commas: ,admin,
+    # 4. At the end after a comma: ,admin$
+    @prometheus_has_access {
+        header_regexp X-Auth-Request-Roles (?:\b|^)admin(?:\b|$)
+    }
+
+    @litellm_ui {
+        path {$LITELLM_ROOT_PATH}/ui {$LITELLM_ROOT_PATH}/ui/*
+    }
+
+    @authenticated_grafana {
+       path /grafana /grafana/*
+    }
+
+    @authenticated_prometheus {
+       path /prometheus /prometheus/*
+    }
+
+    @oauth2_authenticate {
+        path /oauth2 /oauth2/*
+    }
+
+    # Requests to /oauth2/* are proxied to oauth2-proxy without authentication.
+    # You can't use `reverse_proxy /oauth2/* oauth2-proxy.internal:4180` here because the reverse_proxy directive has lower precedence than the handle directive.
+    handle @oauth2_authenticate {
+        reverse_proxy litellm-oauth2-proxy:4180 {
+            # Reset OIDC Headers by default
+            import reset-oidc-headers
+
+            # oauth2-proxy requires the X-Real-IP and X-Forwarded-{Proto,Host,Uri} headers.
+            # The reverse_proxy directive automatically sets X-Forwarded-{For,Proto,Host} headers.
+            header_up Host {host}
+            header_up Port 443
+    
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Uri {uri}
+    
+            # Allow long Requests (required if Model is not already loaded into GPU VRAM) 
+            # Instruct Caddy to leave the backend socket open for streaming tokens
+            transport http {
+                read_timeout 600s
+                dial_timeout 600s
+            }
+        }
+    }
+
+    # Requests to other paths are first processed by oauth2-proxy for authentication.
+    handle {
+        # Prometheus
+        # Matches /prometheus and everything under it, then strips /prometheus
+        handle @authenticated_prometheus {
+            # Strip /prometheus Prefix
+            uri strip_prefix /prometheus
+ 
+            # Enforce SSO Authentication via oath2-proxy
+            import oauth2-proxy-authenticate
+
+            handle @prometheus_has_access {
+                # Reverse Proxy
+                reverse_proxy http://0.0.0.0:9090 {
+                    header_up Host {host}
+                    header_up Port 443
+        
+                    header_up X-Real-IP {remote_host}
+                    header_up X-Forwarded-Proto {scheme}
+                }
+            }
+
+            handle {
+                respond "Access Denied: Missing Admin Role" 403
+            }
+        }
+
+        # Grafana
+        # Matches /grafana and everything under it, then strips /prometheus
+        handle_path /grafana* {
+            # Enforce SSO Authentication via oath2-proxy
+            import oauth2-proxy-authenticate
+
+            # Reverse Proxy
+            reverse_proxy http://0.0.0.0:3000 {
+                header_up Host {host}
+                header_up Port 443
+        
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Proto {scheme}
+            }
+        }
+
+        handle @litellm_ui {
+            # Enforce SSO Authentication via oath2-proxy
+            import oauth2-proxy-authenticate
+
+            reverse_proxy http://0.0.0.0:{$APPLICATION_PORT} {
+                header_up Host {host}
+                header_up Port 443
+
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Proto {scheme}
+
+                # Allow long Requests (required if Model is not already loaded into GPU VRAM)
+                # Instruct Caddy to leave the backend socket open for streaming tokens
+                transport http {
+                    read_timeout 600s
+                    dial_timeout 600s
+                }
+            }
+        }
+
+        # LiteLLM UI & API
+        handle {
+            # Enforce SSO Authentication via oath2-proxy
+            import oauth2-proxy-authenticate
+
+            # Reverse Proxy
+            reverse_proxy http://0.0.0.0:{$APPLICATION_PORT} {
+                header_up Host {host}
+                header_up Port 443
+
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Proto {scheme}
+
+                # Transparent Proxy
+                # flush_interval -1
+
+                # Allow long Requests (required if Model is not already loaded into GPU VRAM)
+                # Instruct Caddy to leave the backend socket open for streaming tokens
+                transport http {
+                    read_timeout 600s
+                    dial_timeout 600s
+                }
+            }
+
+        }
+    }    
+}

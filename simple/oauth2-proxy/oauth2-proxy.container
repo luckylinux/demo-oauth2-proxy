@@ -1,0 +1,32 @@
+[Unit]
+Description=OAuth2 Proxy Container
+Requires=oauth2-redis.service
+After=oauth2-redis.service
+
+[Service]
+Restart=always
+
+[Container]
+ContainerName=oauth2-proxy
+
+Pod=llm.pod
+StartWithPod=true
+
+# General Settings
+EnvironmentFile=.env
+
+# Specific Settings
+EnvironmentFile=.env.oauth2-proxy
+
+# Other Environment Settings
+# Environment=XXX=xxx
+
+# Image
+Image=docker.MYDOMAIN.TLD/quay.io/oauth2-proxy/oauth2-proxy:latest
+Pull=missing
+
+# User
+User=root
+
+# Network
+# Network=container:caddy

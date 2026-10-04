@@ -1,0 +1,105 @@
+server:
+  BindAddress: "0.0.0.0:4180"
+
+upstreamConfig:
+  upstreams:
+    - id: "caddy"
+      path: /
+      static: true
+      staticCode: 200
+
+providers:
+  - id: "authentik"
+    provider: "oidc"
+    clientID: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    clientSecret: "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+    oidcConfig:
+      issuerURL: "https://authentik.MYDOMAIN.TLD/application/o/litellm-api/"
+      enabledSigningAlgs:
+        - "RS256"
+        - "ES256"
+    profileURL: "https://authentik.MYDOMAIN.TLD/application/o/userinfo/"
+    scope: "email openid profile friendly_name groups entitlements"
+    code_challenge_method: "S256"
+    additionalClaims:
+      - "name"
+      - "given_name"
+      - "roles"
+      - "entitlements"
+      - "groups"
+      - "friendly_name"
+      - "email_verified"
+
+# This block tells oauth2-proxy to accept incoming "Authorization: Bearer <JWT>" headers
+#authorization:
+#  skipJWTBearerTokens: true
+#  extraJWTIssuers:
+#    - issuerURL: "https://authentik.MYDOMAIN.TLD/application/o/litellm-api/"
+#      audience: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+
+# injectRequestHeaders:
+injectResponseHeaders:
+  #############################
+  # Standard Headers          #
+  #############################
+  - name: "X-Auth-Request-User"
+    values:
+      - claimSource: { claim: "name" }
+  - name: "X-Auth-Request-Preferred-Username"
+    values:
+      - claimSource: { claim: "preferred_username" }
+  - name: "X-Auth-Request-Username"
+    values:
+      - claimSource: { claim: "preferred_username" }
+  - name: "X-Auth-Request-Email"
+    values:
+      - claimSource: { claim: "email" }
+  - name: "X-Auth-Request-Groups"
+    values:
+      - claimSource: { claim: "groups" }
+
+  #############################
+  # Non-Standard Headers
+  #############################
+  - name: "X-Auth-Request-Roles"
+    values:
+      - claimSource: { claim: "roles" }
+
+  - name: "X-Auth-Request-Entitlements"
+    values:
+      - claimSource: {claim: "entitlements" }
+
+  - name: "X-Auth-Request-Friendly-Name"
+    values:
+      - claimSource: { claim: "friendly_name" }
+
+  - name: "X-Auth-Request-Email-Verified"
+    values:
+      - claimSource: { claim: "email_verified" }
+
+
+# !! Using Environment Variables instead !!
+# The following were some Configuration that was attempted during Testing only and is only provided as Reference
+#
+#config:
+#  clientID: "XXXXXXXXXXXXXXXXXXXXXXXXXX"
+#  clientSecret: "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY"
+#  cookieSecret: "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+#  cookieSecure: true
+#
+#extraArgs:
+#  provider: "oidc"
+#  # login-url: "<your-idp-login-url>"
+#  # redeem-url: "<your-idp-token-url>"
+#  # validate-url: "<your-idp-user-info-url>"
+#  oidc-issuer-url: "https://authentik.MYDOMAIN.TLD/application/o/litellm/"
+#  redirect_url = "https://litellm.MYDOMAIN.TLD/oauth2/callback"
+#
+#  # Extract user identity and pass as HTTP headers
+#  pass-user-headers: true
+#  set-xauthuser: true
+#  set-authorization-header: true
+#
+#  email_domains = [ "*" ]
+#
+# oidc_enabled_signing_algs = ["RS256", "ES256"]

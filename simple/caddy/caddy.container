@@ -1,0 +1,30 @@
+[Unit]
+Description=Caddy Container
+
+[Service]
+Restart=always
+
+[Container]
+ContainerName=caddy
+
+# Enable if Part of a Pod
+Pod=llm.pod
+StartWithPod=true
+
+Environment=CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
+EnvironmentFile=.env.caddy
+
+Image=docker.MYDOMAIN.TLD/docker.io/library/caddy:latest
+Pull=always
+
+NoNewPrivileges=true
+
+Volume=./Caddyfile:/etc/caddy/Caddyfile:ro,z
+Volume=/home/podman/containers/data/caddy:/data/caddy:z
+Volume=/home/podman/containers/log/caddy:/var/log:z
+Volume=/home/podman/containers/config/caddy:/config/caddy:z
+Volume=/home/podman/containers/certificates/letsencrypt:/certificates:ro,z
+
+# Disable if Part of a Pod
+# [Install]
+# WantedBy=default.target
